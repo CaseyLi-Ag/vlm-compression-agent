@@ -1,0 +1,50 @@
+{
+  "seed_results": [
+    {
+      "seed": 41,
+      "results": {
+        "pope": {
+          "score": 0.625,
+          "bf16_pytorch_score": 0.9583333333333334,
+          "delta_pp": -33.333333333333336,
+          "median_ttft_ms": 161.2088500005484
+        },
+        "textvqa": {
+          "score": 0.1875,
+          "bf16_pytorch_score": 0.775,
+          "delta_pp": -58.75,
+          "median_ttft_ms": 325.69039999998495
+        }
+      },
+      "mean_ttft_ms": 243.44962500026668
+    },
+    {
+      "seed": 62,
+      "results": {
+        "pope": {
+          "score": 0.5416666666666666,
+          "bf16_pytorch_score": 0.9583333333333334,
+          "delta_pp": -41.66666666666667,
+          "median_ttft_ms": 191.83944999895175
+        },
+        "textvqa": {
+          "score": 0.125,
+          "bf16_pytorch_score": 0.8666666666666667,
+          "delta_pp": -74.16666666666667,
+          "median_ttft_ms": 333.3131499985029
+        }
+      },
+      "mean_ttft_ms": 262.57629999872734
+    }
+  ],
+  "fp16_parity_probe": {
+    "pope": {
+      "olive_fp16": 1.0,
+      "torch_bf16": 1.0
+    },
+    "textvqa": {
+      "olive_fp16": 0.8333333333333334,
+      "torch_bf16": 0.8333333333333334
+    }
+  }
+}

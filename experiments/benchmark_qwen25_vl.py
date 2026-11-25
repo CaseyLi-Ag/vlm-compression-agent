@@ -1,0 +1,12 @@
+"""Compatibility entry point for the original fixed-configuration benchmark."""
+
+if __package__ in (None, ""):
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from vlm_compression_agent.benchmark_qwen25_vl import *  # noqa: F403
+
+if __name__ == "__main__":
+    main()

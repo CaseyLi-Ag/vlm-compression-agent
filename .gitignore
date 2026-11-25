@@ -1,0 +1,17 @@
+/.venv/
+/venv/
+/.olive-cache/
+/AngelSlim-main/
+/models/
+/datasets/
+/results/
+/ppt/
+/dist/
+/build/
+/docs/superpowers/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.env.*
