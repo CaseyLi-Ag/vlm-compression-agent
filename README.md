@@ -2,6 +2,8 @@
 
 面向 Qwen2.5-VL-3B 的本地压缩配置搜索工具。我用显存上限、每项任务允许下降的分数和评测轮数约束搜索，根据 GPU 实测结果选择 INT4 AWQ 与 VisionZip 的组合。
 
+`chat` 支持用自然语言指定压缩目标。需求解析和报告解读使用 DeepSeek Flash，模型推理、搜索和复测在使用者的 NVIDIA CUDA GPU 上执行。
+
 ## 搜索与验证
 
 1. 在 POPE 和 TextVQA 上评测 BF16 与 INT4 AWQ，记录任务得分、峰值显存和首 token 延迟（TTFT）。
@@ -10,14 +12,22 @@
 
 ## 安装
 
-CLI 要求 Python 3.10 或更高版本。在仓库根目录执行以下命令。
+CLI 要求 Python 3.10 或更高版本。先克隆项目并创建虚拟环境。
+
+```bash
+git clone https://github.com/CaseyLi-Ag/vlm-compression-agent.git
+cd vlm-compression-agent
+python -m venv .venv
+```
+
+在 PowerShell 中运行 `.\.venv\Scripts\Activate.ps1`，在 Bash 中运行 `source .venv/bin/activate`。激活后安装 CLI。
 
 ```bash
 python -m pip install .
 vlm-compression-agent demo
 ```
 
-`demo` 使用模拟数据验证搜索流程，可在 CPU 上离线运行，输出标记为 `"simulated": true`。已有 wheel 时，可以通过 `python -m pip install --no-index vlm_compression_agent-0.1.0-py3-none-any.whl` 安装。
+`demo` 使用模拟数据验证搜索流程，可在 CPU 上离线运行，输出标记为 `"simulated": true`。已有 wheel 时，可以通过 `python -m pip install --no-index vlm_compression_agent-0.2.0-py3-none-any.whl` 安装。
 
 ## GPU 环境
 
@@ -26,6 +36,7 @@ vlm-compression-agent demo
 在 Windows 的 Python 3.12 虚拟环境中安装依赖。先将支持 Qwen2.5-VL VisionZip 的 AngelSlim 源码放在 `AngelSlim-main/` 下。CUDA 依赖需与显卡驱动及运行平台兼容。安装参考见 [PyTorch](https://pytorch.org/get-started/locally/)、[GPTQModel](https://github.com/ModelCloud/GPTQModel/wiki/Installation-and-Quickstart) 和 [AngelSlim](https://github.com/Tencent/AngelSlim)。
 
 ```powershell
+git clone --depth 1 https://github.com/Tencent/AngelSlim.git AngelSlim-main
 python -m pip install "setuptools>=77,<83" wheel
 python -m pip install torch==2.10.0 torchvision==0.25.0 --index-url https://download.pytorch.org/whl/cu128
 python -m pip install transformers==5.6.2 GPTQModel==7.0.0 triton-windows==3.9.0.post30 accelerate pyarrow Pillow PyYAML
@@ -43,12 +54,36 @@ python -m pip install --no-build-isolation -e .\AngelSlim-main
 - `datasets/pope/` 存放 POPE 测试集的 `test*.parquet`。[POPE 数据集](https://huggingface.co/datasets/lmms-lab/POPE)
 - `datasets/textvqa/` 存放 TextVQA 验证集的 `validation*.parquet`。[TextVQA 数据集](https://huggingface.co/datasets/lmms-lab/textvqa)
 
-以下 Hugging Face CLI 命令下载评测使用的两个数据划分。
+以下 Hugging Face CLI 命令下载模型和评测数据。已下载的文件可以直接复用。
 
 ```bash
+hf download Qwen/Qwen2.5-VL-3B-Instruct --local-dir models/Qwen2.5-VL-3B-Instruct
+hf download Qwen/Qwen2.5-VL-3B-Instruct-AWQ --local-dir models/Qwen2.5-VL-3B-Instruct-AWQ
 hf download lmms-lab/POPE --repo-type dataset --include "data/test*.parquet" --local-dir datasets/pope
 hf download lmms-lab/textvqa --repo-type dataset --include "data/validation*.parquet" --local-dir datasets/textvqa
 ```
+
+## 对话式评测
+
+配置 GPU 环境、模型和数据后，在当前终端输入自己的 DeepSeek API Key。每个使用者用自己的 Key 调用 API。 [DeepSeek API 平台](https://platform.deepseek.com/api_keys)
+
+```powershell
+# PowerShell 7.2+
+$env:DEEPSEEK_API_KEY = Read-Host "DeepSeek API Key" -MaskInput
+vlm-compression-agent chat --search-samples 24 --validation-samples 24
+```
+
+```bash
+# Bash
+read -rsp 'DeepSeek API Key: ' DEEPSEEK_API_KEY
+printf '\n'
+export DEEPSEEK_API_KEY
+vlm-compression-agent chat --search-samples 24 --validation-samples 24
+```
+
+可以输入「想把 Qwen2.5-VL-3B 压到 4 GiB 以下，读图文字的表现尽量保持，最多跑 8 轮」。对话会补齐显存、允许掉分和评测轮数，列出计划。输入 `run` 或「运行」确认并开始。每次启动评测一份计划，`quit` 可以在开跑前退出。用 `--cuda-device` 选择当前进程可见的 GPU。CLI 会在对话开始前显示这张卡的空闲显存。跑完整评测仍需加载 BF16 基线。
+
+需求文本和汇总指标会发送给 DeepSeek，模型、评测图片、逐题结果和完整报告保存在本机。评测过程中，搜索器直接根据本地测量更新候选。API 解读失败时，终端仍会显示汇总和 `report.json` 的路径。`run`、`compare`、`doctor` 和 `demo` 无需设置 API Key。
 
 ## 运行评测
 

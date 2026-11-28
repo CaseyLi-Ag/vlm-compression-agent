@@ -18,6 +18,7 @@ from statistics import mean
 TASKS = ("pope", "textvqa")
 MODEL = "Qwen2.5-VL-3B-Instruct"
 POLICIES = ("adaptive", "grid", "fixed-awq", "fixed-visionzip")
+BASELINE_FAILURES = ("baseline_failed", "validation_baseline_failed")
 
 
 @dataclass(frozen=True)
@@ -195,6 +196,7 @@ class LocalEvaluator:
         request = dict(args=vars(self.args), output=self.output, candidate=asdict(candidate),
                        split=split, number=number)
         env = dict(os.environ, HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
+        env.pop("DEEPSEEK_API_KEY", None)
         result = subprocess.run([sys.executable, "-u", "-m", "vlm_compression_agent", "--worker"],
                                 input=json.dumps(request, default=str), encoding="utf-8", env=env,
                                 cwd=Path(__file__).resolve().parents[1])
@@ -314,12 +316,13 @@ def main():
         run_worker()
         return
     from . import __version__
-    from .preflight import doctor, input_issues
+    from .preflight import doctor
 
     parser = argparse.ArgumentParser(description=__doc__,
                                      epilog="Commands: run performs a search; compare evaluates four policies; "
-                                     "doctor checks a local GPU setup; demo uses simulated measurements.")
-    parser.add_argument("command", nargs="?", choices=("run", "compare", "doctor", "demo"), default="run")
+                                     "doctor checks a local GPU setup; demo uses simulated measurements; "
+                                     "chat builds a local evaluation plan from a DeepSeek conversation.")
+    parser.add_argument("command", nargs="?", choices=("run", "compare", "doctor", "demo", "chat"), default="run")
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument("--project-dir", type=Path, default=Path.cwd(),
                         help="Directory containing models/ and datasets/ (default: current directory)")
@@ -362,6 +365,31 @@ def main():
         parser.error("--cuda-device must be nonnegative")
     if args.reuse_search_baselines and (args.command != "run" or args.policy not in {"adaptive", "grid"}):
         parser.error("--reuse-search-baselines is available for adaptive or grid run only")
+    if args.command == "chat":
+        from .chat import run_chat
+
+        raise SystemExit(run_chat(args, goal, lambda confirmed: run_evaluation(args, confirmed, parser)))
+    report, path = run_evaluation(args, goal, parser)
+    if args.command == "compare":
+        for policy, result in report["policies"].items():
+            print(f"{policy}: {result['status']} after {result['rounds_used']} rounds")
+        print(path)
+        if all(result["status"] in BASELINE_FAILURES for result in report["policies"].values()):
+            raise SystemExit(1)
+        return
+    print(f"{report['status']} after {report['rounds_used']} rounds", flush=True)
+    if report["recommendation"]:
+        best = report["recommendation"]
+        print(f"Recommended {best['candidate']} with mean TTFT {best['mean_ttft_ms']:.1f} ms", flush=True)
+    print(path, flush=True)
+    if report["status"] in BASELINE_FAILURES:
+        raise SystemExit(1)
+
+
+def run_evaluation(args, goal, parser):
+    from . import __version__
+    from .preflight import input_issues
+
     issues = input_issues(args)
     if issues:
         parser.error("\n".join(issues))
@@ -388,23 +416,8 @@ def main():
     if args.command == "compare":
         from .comparison import compare_policies
 
-        comparison = compare_policies(goal, evaluator, persist)
-        for policy, result in comparison["policies"].items():
-            print(f"{policy}: {result['status']} after {result['rounds_used']} rounds")
-        print(report_path)
-        if all(result["status"] in {"baseline_failed", "validation_baseline_failed"}
-               for result in comparison["policies"].values()):
-            raise SystemExit(1)
-        return
-
-    report = run_search(goal, evaluator, persist, policy=args.policy)
-    print(f"{report['status']} after {report['rounds_used']} rounds", flush=True)
-    if report["recommendation"]:
-        best = report["recommendation"]
-        print(f"Recommended {best['candidate']} with mean TTFT {best['mean_ttft_ms']:.1f} ms", flush=True)
-    print(report_path.resolve(), flush=True)
-    if report["status"] in {"baseline_failed", "validation_baseline_failed"}:
-        raise SystemExit(1)
+        return compare_policies(goal, evaluator, persist), report_path
+    return run_search(goal, evaluator, persist, policy=args.policy), report_path
 
 
 if __name__ == "__main__":

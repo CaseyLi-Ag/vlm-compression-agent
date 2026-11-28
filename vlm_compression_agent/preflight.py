@@ -59,15 +59,20 @@ def doctor(args):
             issues.append("Triton needs a C++ compiler. Run this command in x64 Visual Studio Developer PowerShell.")
 
     device = None
+    memory = None
     if "torch" in versions:
         try:
             import torch
 
-            if not 0 <= args.cuda_device < torch.cuda.device_count():
+            if not torch.version.cuda:
+                issues.append("The installed PyTorch build does not support NVIDIA CUDA")
+            elif not 0 <= args.cuda_device < torch.cuda.device_count():
                 issues.append(f"CUDA device {args.cuda_device} is unavailable among the visible devices")
             else:
                 with torch.cuda.device(args.cuda_device):
                     device = torch.cuda.get_device_name()
+                    free, total = torch.cuda.mem_get_info()
+                    memory = dict(free_mib=free // 1024**2, total_mib=total // 1024**2)
                     if not torch.cuda.is_bf16_supported():
                         issues.append(f"{device} does not support BF16")
         except (ImportError, OSError, RuntimeError) as error:
@@ -89,5 +94,5 @@ def doctor(args):
             except (ImportError, OSError, RuntimeError, AttributeError) as error:
                 issues.append(f"Cannot load {module}.{api}: {error}")
 
-    return dict(status="ready" if not issues else "needs_setup", cuda_device=device,
+    return dict(status="ready" if not issues else "needs_setup", cuda_device=device, cuda_memory=memory,
                 python_packages=versions, issues=issues)
